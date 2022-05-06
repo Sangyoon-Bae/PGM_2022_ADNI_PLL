@@ -1,5 +1,6 @@
 # PGM_2022_ADNI_PLL
-Final project for PGM 2022 (SNU)
+**Final project for PGM 2022 (SNU)**
+
 This repository belongs to Stella Sangyoon Bae (stellasybae@snu.ac.kr)
 
 ## Environmental Setting for graphormer
