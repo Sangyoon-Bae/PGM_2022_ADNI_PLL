@@ -1,0 +1,5 @@
+# Release note for ADNI-struct-count*
+
+### v1
+
+May 6, 2022: First major release.
