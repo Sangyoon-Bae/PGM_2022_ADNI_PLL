@@ -100,16 +100,28 @@ class GCNAugmentedDataset(Dataset):
         feat_mask_prob: float = 0.1,  # feature masking 적용할 때 masking 할 노드의 percentage
         edge_perturb_apply_prob: float = 0.5,  # 매 instance 마다 edge perturbation augmentation 적용할 확률
         edge_perturb_prob: float = 0.1,  # edge perturbation 적용할 때 perturb 할 edge 의 percentage
+        node_drop_apply_prob: float = 0.5,  # 매 instance 마다 node drop augmentation 적용할 확률
+        node_drop_prob: float = 0.1,  # node drop 적용할 때 masking 할 노드의 percentage
+        subgraph_apply_prob: float = 0.5,  # 매 instance 마다 subgraph augmentation 적용할 확률
+        subgraph_prob: float = 0.1,  # subgraph 에서 제외될 노드의 percentage
         seed: int = 0,  # random seed for reproducibility
     ):
         self.list_feature = list_feature.astype(np.float32)
         self.list_adj = list_adj.astype(np.float32)
         self.list_NIH_score = list_NIH_score
-        assert all(0.0 <= p <= 1.0 for p in [feat_mask_apply_prob, feat_mask_prob, edge_perturb_apply_prob, edge_perturb_prob])
+        assert all(0.0 <= p <= 1.0
+                   for p in [feat_mask_apply_prob, feat_mask_prob,
+                             edge_perturb_apply_prob, edge_perturb_prob,
+                             node_drop_apply_prob, node_drop_prob,
+                             subgraph_apply_prob, subgraph_prob])
         self.feat_mask_apply_prob = feat_mask_apply_prob
         self.feat_mask_prob = feat_mask_prob
         self.edge_perturb_apply_prob = edge_perturb_apply_prob
         self.edge_perturb_prob = edge_perturb_prob
+        self.node_drop_apply_prob = node_drop_apply_prob
+        self.node_drop_prob = node_drop_prob
+        self.subgraph_apply_prob = subgraph_apply_prob
+        self.subgraph_prob = subgraph_prob
         self.rng = np.random.default_rng(seed)
 
     def __len__(self):
@@ -117,14 +129,36 @@ class GCNAugmentedDataset(Dataset):
 
     def __getitem__(self, index):
         orig_feat, orig_adj, orig_score = self.list_feature[index], self.list_adj[index], self.list_NIH_score[index]
+
         aug_feat = np.copy(orig_feat)
         aug_adj = np.copy(orig_adj)
         num_nodes = orig_feat.shape[0]
+
+        if self.rng.random() < self.subgraph_apply_prob:
+            num_subgraph_nodes = int(num_nodes * (1 - self.subgraph_prob))
+            subgraph_nodes = []
+            node_sample_prob = np.ones(num_nodes) / num_nodes
+
+            while len(subgraph_nodes) < num_subgraph_nodes:
+                center_node = self.rng.choice(num_nodes, 1, node_sample_prob)
+                connected_nodes = self.get_all_connected_nodes(center_node)
+                subgraph_nodes.extend(connected_nodes)
+                node_sample_prob[connected_nodes] = 0.0
+                node_sample_prob = node_sample_prob / node_sample_prob.sum()
+            subgraph_nodes = set(subgraph_nodes[:num_subgraph_nodes])
+            deleted_nodes = np.array([n for n in range(num_nodes) if n not in subgraph_nodes])
+            aug_feat[deleted_nodes] = 0.0
+        if self.rng.random() < self.node_drop_apply_prob:
+            num_drop_nodes = int(num_nodes * self.node_drop_prob)
+            drop_nodes = self.rng.choice(num_nodes, num_drop_nodes, replace=False)
+            if len(drop_nodes) > 0:
+                aug_feat[drop_nodes] = 0.0
         if self.rng.random() < self.feat_mask_apply_prob:
             # apply feature masking
             num_mask = int(num_nodes * self.feat_mask_prob)
-            mask_indices = self.rng.choice(num_nodes, num_mask)
-            aug_feat[mask_indices] = 0.0
+            mask_indices = self.rng.choice(num_nodes, num_mask, replace=False)
+            if len(mask_indices) > 0:
+                aug_feat[mask_indices] = self.rng.random(num_mask)  # 이젠 0 대신 noise로 mask
         if self.rng.random() < self.edge_perturb_apply_prob:
             # apply feature masking
             num_perturb = int(num_nodes * num_nodes * self.edge_perturb_prob)
@@ -132,10 +166,26 @@ class GCNAugmentedDataset(Dataset):
             x_indices = self.rng.choice(num_nodes, num_perturb, replace=True)  # allow duplicates
             y_indices = self.rng.choice(num_nodes, num_perturb, replace=True)  # allow duplicates
             perturbed_values = self.rng.random(num_perturb)
-            aug_adj[x_indices, y_indices] = perturbed_values
-            aug_adj[y_indices, x_indices] = perturbed_values
+            if len(x_indices) > 0:
+                aug_adj[x_indices, y_indices] = perturbed_values
+                aug_adj[y_indices, x_indices] = perturbed_values
             np.fill_diagonal(aug_adj, 0)  # restore perturbed diagonals
         return orig_feat, orig_adj, aug_feat, aug_adj, orig_score
+
+    def neighbors(self, node):
+        return np.where(self.list_adj[node] > 0)[0]
+
+    def get_all_connected_nodes(self, node):
+        visited = set()
+        self._get_all_connected_nodes(node, visited)
+        return sorted(visited)  # sort for reproducibility
+
+    def _get_all_connected_nodes(self, node, visited):
+        visited.add(node)
+        for neighbor in self.neighbors(node):
+            if neighbor in visited:
+                continue
+            self.get_all_connected_nodes(neighbor)
 
 
 def partition(list_feature, list_adj, list_NIH_score, args):
