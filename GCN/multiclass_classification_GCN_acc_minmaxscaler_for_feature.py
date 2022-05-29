@@ -139,6 +139,7 @@ class GCNAugmentedDataset(Dataset):
         aug_feat = np.copy(orig_feat)
         aug_adj = np.copy(orig_adj)
         num_nodes = orig_feat.shape[0]
+        feature_dim = orig_feat.shape[1]
 
         if self.rng.random() < self.subgraph_apply_prob:
             num_subgraph_nodes = int(num_nodes * (1 - self.subgraph_prob))
@@ -164,7 +165,7 @@ class GCNAugmentedDataset(Dataset):
             num_mask = int(num_nodes * self.feat_mask_prob)
             mask_indices = self.rng.choice(num_nodes, num_mask, replace=False)
             if len(mask_indices) > 0:
-                aug_feat[mask_indices] = self.rng.random(num_mask)  # 이젠 0 대신 noise로 mask
+                aug_feat[mask_indices] = self.rng.random(num_mask, feature_dim)  # 이젠 0 대신 noise로 mask
         if self.rng.random() < self.edge_perturb_apply_prob:
             # apply feature masking
             num_perturb = int(num_nodes * (num_nodes-1) * self.edge_perturb_prob * 0.5)
