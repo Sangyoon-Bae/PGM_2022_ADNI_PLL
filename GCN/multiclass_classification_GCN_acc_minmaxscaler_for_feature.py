@@ -191,7 +191,7 @@ class GCNAugmentedDataset(Dataset):
         for neighbor in self.neighbors(node):
             if neighbor in visited:
                 continue
-            self.get_all_connected_nodes(neighbor)
+            self._get_all_connected_nodes(neighbor)
 
 
 def partition(list_feature, list_adj, list_NIH_score, args):
