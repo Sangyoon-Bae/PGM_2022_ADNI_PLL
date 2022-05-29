@@ -123,6 +123,12 @@ class GCNAugmentedDataset(Dataset):
         self.subgraph_apply_prob = subgraph_apply_prob
         self.subgraph_prob = subgraph_prob
         self.rng = np.random.default_rng(seed)
+        num_nodes = list_feature[0].shape[0]
+        all_edges = []
+        for i in range(num_nodes):
+            for j in range(i+1, num_nodes):
+                all_edges.append((i, j))
+        self.all_edges = np.array(all_edges)
 
     def __len__(self):
         return len(self.list_feature)
@@ -161,15 +167,14 @@ class GCNAugmentedDataset(Dataset):
                 aug_feat[mask_indices] = self.rng.random(num_mask)  # 이젠 0 대신 noise로 mask
         if self.rng.random() < self.edge_perturb_apply_prob:
             # apply feature masking
-            num_perturb = int(num_nodes * num_nodes * self.edge_perturb_prob)
-            num_perturb = num_perturb // 2  # perturb half and apply symmetry
-            x_indices = self.rng.choice(num_nodes, num_perturb, replace=True)  # allow duplicates
-            y_indices = self.rng.choice(num_nodes, num_perturb, replace=True)  # allow duplicates
+            num_perturb = int(num_nodes * (num_nodes-1) * self.edge_perturb_prob * 0.5)
+            xy_indices = self.all_edges[self.rng.choice(self.all_edges.shape[0], num_perturb, replace=False)]
+            x_indices = xy_indices[:, 0]
+            y_indices = xy_indices[:, 1]
             perturbed_values = self.rng.random(num_perturb)
             if len(x_indices) > 0:
                 aug_adj[x_indices, y_indices] = perturbed_values
                 aug_adj[y_indices, x_indices] = perturbed_values
-            np.fill_diagonal(aug_adj, 0)  # restore perturbed diagonals
         return orig_feat, orig_adj, aug_feat, aug_adj, orig_score
 
     def neighbors(self, node):
