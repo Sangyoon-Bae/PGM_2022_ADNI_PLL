@@ -147,11 +147,13 @@ class GCNAugmentedDataset(Dataset):
             node_sample_prob = np.ones(num_nodes) / num_nodes
 
             while len(subgraph_nodes) < num_subgraph_nodes:
-                center_node = self.rng.choice(num_nodes, 1, node_sample_prob)
-                connected_nodes = self.get_all_connected_nodes(center_node)
+                center_node = self.rng.choice(num_nodes, 1, p=node_sample_prob)[0]
+                connected_nodes = self.get_all_connected_nodes(index, center_node)
                 subgraph_nodes.extend(connected_nodes)
                 node_sample_prob[connected_nodes] = 0.0
-                node_sample_prob = node_sample_prob / node_sample_prob.sum()
+                prob_sum = node_sample_prob.sum()
+                if prob_sum > 0:
+                    node_sample_prob = node_sample_prob / node_sample_prob.sum()
             subgraph_nodes = set(subgraph_nodes[:num_subgraph_nodes])
             deleted_nodes = np.array([n for n in range(num_nodes) if n not in subgraph_nodes])
             aug_feat[deleted_nodes] = 0.0
@@ -178,20 +180,20 @@ class GCNAugmentedDataset(Dataset):
                 aug_adj[y_indices, x_indices] = perturbed_values
         return orig_feat, orig_adj, aug_feat, aug_adj, orig_score
 
-    def neighbors(self, node):
-        return np.where(self.list_adj[node] > 0)[0]
+    def neighbors(self, index, node):
+        return np.where(self.list_adj[index][node] > 0)[0]
 
-    def get_all_connected_nodes(self, node):
+    def get_all_connected_nodes(self, index, node):
         visited = set()
-        self._get_all_connected_nodes(node, visited)
+        self._get_all_connected_nodes(index, node, visited)
         return sorted(visited)  # sort for reproducibility
 
-    def _get_all_connected_nodes(self, node, visited):
+    def _get_all_connected_nodes(self, index, node, visited):
         visited.add(node)
-        for neighbor in self.neighbors(node):
+        for neighbor in self.neighbors(index, node):
             if neighbor in visited:
                 continue
-            self._get_all_connected_nodes(neighbor)
+            self._get_all_connected_nodes(index, neighbor, visited)
 
 
 def partition(list_feature, list_adj, list_NIH_score, args):
